@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://www.google.com/recaptcha/api.js?render=explicit" async defer></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      }
+
+      #root {
+        min-height: 92px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        max-width: 100%;
+      }
+
+      #recaptcha {
+        max-width: 100%;
+        overflow: visible;
+      }
+
+      .message {
+        color: #667085;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="recaptcha"></div>
+      <div id="message" class="message" style="display:none;"></div>
+    </div>
+    <script>
+      const SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+      const RENDER = "streamlit:render";
+      const COMPONENT_READY = "streamlit:componentReady";
+      const SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+      let widgetId = null;
+      let lastSiteKey = null;
+      let lastTheme = null;
+      let lastSize = null;
+
+      function sendMessage(type, data) {
+        window.parent.postMessage(
+          Object.assign({ isStreamlitMessage: true, type }, data),
+          "*"
+        );
+      }
+
+      function setHeight() {
+        sendMessage(SET_FRAME_HEIGHT, { height: lastSize === "compact" ? 150 : 104 });
+      }
+
+      function setValue(value) {
+        sendMessage(SET_COMPONENT_VALUE, {
+          value: value || null,
+          dataType: "json",
+        });
+      }
+
+      function showMessage(text) {
+        const msg = document.getElementById("message");
+        const captcha = document.getElementById("recaptcha");
+        msg.textContent = text;
+        msg.style.display = "block";
+        captcha.style.display = "none";
+        setHeight();
+      }
+
+      function renderCaptcha(args) {
+        const siteKey = args.site_key;
+        let theme = "light";
+        try {
+          const storedWp = localStorage.getItem('aria_wallpaper_theme') || 'None';
+          if (storedWp === 'Cosmic Nebula' || storedWp === 'Midnight Stars' || storedWp === 'Cyber Grid') {
+            theme = 'dark';
+          } else if (storedWp === 'Morning Sky' || storedWp === 'Minimal Starlet' || storedWp === 'Architect Grid') {
+            theme = 'light';
+          } else {
+            let parentDoc = document;
+            try {
+              if (window.parent && window.parent.document) {
+                parentDoc = window.parent.document;
+              }
+            } catch (pe) {}
+            const parentTheme = parentDoc.documentElement.getAttribute('data-theme') || 
+                                parentDoc.body.getAttribute('data-theme') || 
+                                (args.theme === 'dark' ? 'dark' : 'light');
+            theme = parentTheme === 'dark' ? 'dark' : 'light';
+          }
+        } catch (e) {
+          theme = args.theme === "dark" ? "dark" : "light";
+        }
+        const size = args.size === "compact" ? "compact" : "normal";
+
+        if (!siteKey) {
+          showMessage("reCAPTCHA site key is not configured.");
+          setValue(null);
+          return;
+        }
+
+        if (!window.grecaptcha || !window.grecaptcha.render) {
+          setTimeout(() => renderCaptcha(args), 250);
+          return;
+        }
+
+        if (widgetId !== null && lastSiteKey === siteKey && lastTheme === theme && lastSize === size) {
+          setHeight();
+          return;
+        }
+
+        document.getElementById("message").style.display = "none";
+        const container = document.getElementById("recaptcha");
+        container.style.display = "block";
+        container.innerHTML = "";
+        widgetId = window.grecaptcha.render(container, {
+          sitekey: siteKey,
+          theme,
+          size,
+          callback: (token) => setValue(token),
+          "expired-callback": () => setValue(null),
+          "error-callback": () => setValue(null),
+        });
+        lastSiteKey = siteKey;
+        lastTheme = theme;
+        lastSize = size;
+        setHeight();
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.data && event.data.type === RENDER) {
+          renderCaptcha(event.data.args || {});
+        }
+      });
+
+      sendMessage(COMPONENT_READY, { apiVersion: 1 });
+      setHeight();
+    </script>
+  </body>
+</html>
